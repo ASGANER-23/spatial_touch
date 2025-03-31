@@ -24,10 +24,10 @@ mp_face_detection = mp.solutions.face_detection
 
 # Initialize detectors
 hands = mp_hands.Hands(
-    model_complexity=1,  # Increased model complexity for better accuracy
+    model_complexity=1,
     min_detection_confidence=0.6,
     min_tracking_confidence=0.6,
-    max_num_hands=2)  # Allow detection of both hands
+    max_num_hands=2)
 face_detection = mp_face_detection.FaceDetection(min_detection_confidence=0.5)
 
 # Initialize volume control based on platform
@@ -77,23 +77,22 @@ def set_volume(volume_percentage):
 
 # Function to count fingers
 def count_fingers(hand_landmarks, image_width):
-    # For a flipped image, we need to adjust the x-coordinate logic
     # Get coordinates of key landmarks
     tips = [
-        hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP],    # Thumb tip
-        hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP],   # Index tip
-        hand_landmarks.landmark[mp_hands.HandLandmark.MIDDLE_FINGER_TIP],  # Middle tip
-        hand_landmarks.landmark[mp_hands.HandLandmark.RING_FINGER_TIP],    # Ring tip
-        hand_landmarks.landmark[mp_hands.HandLandmark.PINKY_TIP]     # Pinky tip
+        hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP],
+        hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP],
+        hand_landmarks.landmark[mp_hands.HandLandmark.MIDDLE_FINGER_TIP],
+        hand_landmarks.landmark[mp_hands.HandLandmark.RING_FINGER_TIP],
+        hand_landmarks.landmark[mp_hands.HandLandmark.PINKY_TIP]
     ]
     
     # Get coordinates for the base of each finger
     pip = [
-        hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_IP],  # Thumb IP joint (different for thumb)
-        hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_PIP],   # Index PIP joint
-        hand_landmarks.landmark[mp_hands.HandLandmark.MIDDLE_FINGER_PIP],  # Middle PIP joint
-        hand_landmarks.landmark[mp_hands.HandLandmark.RING_FINGER_PIP],    # Ring PIP joint
-        hand_landmarks.landmark[mp_hands.HandLandmark.PINKY_PIP]     # Pinky PIP joint
+        hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_IP],
+        hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_PIP],
+        hand_landmarks.landmark[mp_hands.HandLandmark.MIDDLE_FINGER_PIP],
+        hand_landmarks.landmark[mp_hands.HandLandmark.RING_FINGER_PIP],
+        hand_landmarks.landmark[mp_hands.HandLandmark.PINKY_PIP]
     ]
     
     # Get wrist position for thumb calculation
@@ -103,10 +102,7 @@ def count_fingers(hand_landmarks, image_width):
     extended_fingers = 0
     
     # Special case for thumb
-    # Thumb is extended if the tip is to the left/right of the IP joint (depending on which hand)
     thumb_mcp = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_MCP]
-    
-    # For flipped image, the logic is reversed
     is_right_hand = thumb_mcp.x > wrist.x  # Reversed for flipped image
     
     if (is_right_hand and tips[0].x > pip[0].x) or (not is_right_hand and tips[0].x < pip[0].x):
@@ -119,7 +115,7 @@ def count_fingers(hand_landmarks, image_width):
             
     return extended_fingers
 
-# Function to detect pinch gesture and calculate volume
+# Function to detect pinch gesture
 def detect_pinch(hand_landmarks, is_right_hand):
     if not is_right_hand:
         return False, 0, 0, 0
@@ -130,9 +126,8 @@ def detect_pinch(hand_landmarks, is_right_hand):
     middle_tip = hand_landmarks.landmark[mp_hands.HandLandmark.MIDDLE_FINGER_TIP]
     ring_tip = hand_landmarks.landmark[mp_hands.HandLandmark.RING_FINGER_TIP]
     pinky_tip = hand_landmarks.landmark[mp_hands.HandLandmark.PINKY_TIP]
-    wrist = hand_landmarks.landmark[mp_hands.HandLandmark.WRIST]
     
-    # Calculate distance between thumb and index finger (Euclidean distance in 3D space)
+    # Calculate distance between thumb and index finger
     distance = math.sqrt(
         (thumb_tip.x - index_tip.x)**2 + 
         (thumb_tip.y - index_tip.y)**2 + 
@@ -140,13 +135,11 @@ def detect_pinch(hand_landmarks, is_right_hand):
     )
     
     # Check distances to other fingers to ensure it's specifically a thumb-index pinch
-    # and not a general hand closure
     index_middle_dist = math.sqrt((index_tip.x - middle_tip.x)**2 + (index_tip.y - middle_tip.y)**2)
     middle_ring_dist = math.sqrt((middle_tip.x - ring_tip.x)**2 + (middle_tip.y - ring_tip.y)**2)
     ring_pinky_dist = math.sqrt((ring_tip.x - pinky_tip.x)**2 + (ring_tip.y - pinky_tip.y)**2)
     
-    # Define pinch threshold (adjust based on your needs)
-    # Smaller value = more sensitive
+    # Define pinch threshold
     pinch_threshold = 0.05
     
     # Ensure other fingers are spread apart to confirm intentional pinch
@@ -155,26 +148,16 @@ def detect_pinch(hand_landmarks, is_right_hand):
     # Check if fingers are pinched
     is_pinching = distance < pinch_threshold and other_fingers_spread
     
-    # Calculate volume based on vertical position
-    # Lower y value means higher position on screen
+    # Calculate pinch position (midpoint between thumb and index)
+    pinch_x = (thumb_tip.x + index_tip.x) / 2
     pinch_y = (thumb_tip.y + index_tip.y) / 2
-    # Calculate height relative to wrist position (normalize)
-    height_ratio = max(0, min(1, (wrist.y - pinch_y) * 1.5))  # Adjusted multiplier for better range
-    height_percent = height_ratio * 100
     
-    # Calculate actual 3D positions for visualization
-    thumb_x, thumb_y = thumb_tip.x, thumb_tip.y
-    index_x, index_y = index_tip.x, index_tip.y
-    
-    return is_pinching, height_percent, (thumb_x, thumb_y), (index_x, index_y)
+    return is_pinching, (pinch_x, pinch_y), (thumb_tip.x, thumb_tip.y), (index_tip.x, index_tip.y)
 
 # Function to determine if hand is left or right
 def identify_hand_type(hand_landmarks):
-    # MediaPipe actually provides this information, but as backup:
-    # Check the position of the thumb relative to the pinky
     thumb_tip = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP]
     pinky_tip = hand_landmarks.landmark[mp_hands.HandLandmark.PINKY_TIP]
-    wrist = hand_landmarks.landmark[mp_hands.HandLandmark.WRIST]
     
     # Since the image is flipped, right hand will have thumb to the right of pinky
     is_right_hand = thumb_tip.x > pinky_tip.x
@@ -184,21 +167,28 @@ def identify_hand_type(hand_landmarks):
 # Video capture
 cap = cv2.VideoCapture(0)
 
-# Initialize variables for tracking pinch state
-was_pinching = False
-pinch_start_volume = current_volume
-volume_change_smoothing = 5  # Frames to average for smoothing
-last_positions = []
+# Initialize state variables
+pinch_active = False
+initial_pinch_pos = (0, 0)
+pinch_history = []  # Store recent pinch positions
+volume_history = []  # For smoothing volume changes
+scroll_start_time = 0
+scroll_direction = None  # 'up' or 'down'
+prev_y = 0
+initial_volume = current_volume
+
+# Gesture control parameters
+history_length = 5  # Number of frames to track for movement detection
+scroll_activation_delay = 0.3  # Seconds to wait after pinch before scrolling activates
+scroll_sensitivity = 2.0  # Higher = more sensitive to movement
+volume_change_interval = 0.05  # Seconds between volume updates
 last_volume_change_time = time.time()
-volume_change_interval = 0.05  # seconds between volume adjustments
 
 # Get initial system volume if possible
 try:
     current_volume = get_system_volume()
-    pinch_start_volume = current_volume
 except:
     current_volume = 50  # Default if can't get current volume
-    pinch_start_volume = current_volume
 
 while cap.isOpened():
     success, image = cap.read()
@@ -209,39 +199,35 @@ while cap.isOpened():
     # Flip the image horizontally for a selfie-view display
     image = cv2.flip(image, 1)
         
-    # To improve performance, optionally mark the image as not writeable
+    # To improve performance, mark the image as not writeable
     image.flags.writeable = False
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     
-    # Process hands
+    # Process hands and face
     results_hands = hands.process(image)
-    
-    # Process face
     results_face = face_detection.process(image)
     
-    # Draw the hand annotations on the image
+    # Make the image writeable again for drawing
     image.flags.writeable = True
     image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
     
+    # Variables to track hand activity in this frame
     finger_count = 0
-    is_pinching = False
-    height_percent = 0
-    thumb_pos = (0, 0)
-    index_pos = (0, 0)
+    is_pinching_now = False
+    current_pinch_pos = None
+    pinch_display_color = (0, 255, 255)  # Yellow by default
     
     # Check if it's time to process volume change
     current_time = time.time()
     can_change_volume = current_time - last_volume_change_time >= volume_change_interval
     
-    # Draw hand landmarks and count fingers
+    # Process hand landmarks if detected
     if results_hands.multi_hand_landmarks:
         for idx, hand_landmarks in enumerate(results_hands.multi_hand_landmarks):
-            # Get hand type information
+            # Get hand type
             if results_hands.multi_handedness:
-                # Use MediaPipe's classification
                 hand_type = results_hands.multi_handedness[idx].classification[0].label
             else:
-                # Fallback to our function
                 hand_type = identify_hand_type(hand_landmarks)
                 
             is_right_hand = (hand_type == "Right")
@@ -269,69 +255,117 @@ while cap.isOpened():
             
             # Check for pinch gesture on right hand
             if is_right_hand:
-                current_pinch, curr_height, thumb_pos, index_pos = detect_pinch(hand_landmarks, is_right_hand)
+                is_pinch, pinch_pos, thumb_pos, index_pos = detect_pinch(hand_landmarks, is_right_hand)
                 
-                if current_pinch:
-                    is_pinching = True
-                    height_percent = curr_height
+                if is_pinch:
+                    is_pinching_now = True
+                    current_pinch_pos = pinch_pos
                     
                     # Convert normalized positions to pixel coordinates
                     thumb_pixel = (int(thumb_pos[0] * image.shape[1]), int(thumb_pos[1] * image.shape[0]))
                     index_pixel = (int(index_pos[0] * image.shape[1]), int(index_pos[1] * image.shape[0]))
+                    pinch_pixel = (int(pinch_pos[0] * image.shape[1]), int(pinch_pos[1] * image.shape[0]))
                     
-                    # Store position for smoothing
-                    last_positions.append(height_percent)
-                    if len(last_positions) > volume_change_smoothing:
-                        last_positions.pop(0)
-                    
-                    # Calculate smoothed height
-                    height_percent = sum(last_positions) / len(last_positions)
-                    
-                    # Visual feedback for pinch
+                    # Draw pinch visualization
                     cv2.line(image, thumb_pixel, index_pixel, (0, 0, 255), 3)
                     cv2.circle(image, thumb_pixel, 10, (255, 0, 0), -1)
                     cv2.circle(image, index_pixel, 10, (255, 0, 0), -1)
                     
-                    midpoint = ((thumb_pixel[0] + index_pixel[0]) // 2, (thumb_pixel[1] + index_pixel[1]) // 2)
-                    cv2.putText(image, f"Height: {int(height_percent)}%", 
-                               (midpoint[0] - 50, midpoint[1] - 20), 
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+                    # Handle pinch state management
+                    if not pinch_active:
+                        # New pinch detected
+                        pinch_active = True
+                        initial_pinch_pos = pinch_pos
+                        pinch_history = [pinch_pos]  # Reset history
+                        initial_volume = current_volume  # Remember starting volume
+                        scroll_start_time = current_time
+                        scroll_direction = None
+                        prev_y = pinch_pos[1]
+                        pinch_display_color = (0, 255, 255)  # Yellow when first pinched
+                    else:
+                        # Continue existing pinch
+                        pinch_history.append(pinch_pos)
+                        if len(pinch_history) > history_length:
+                            pinch_history.pop(0)
+                        
+                        # Check if we've been pinching long enough to activate scrolling
+                        if current_time - scroll_start_time >= scroll_activation_delay:
+                            # Calculate movement trend over last few frames
+                            if len(pinch_history) >= 3:  # Need enough history to detect trend
+                                # Calculate vertical movement (y-axis)
+                                first_y = pinch_history[0][1]
+                                last_y = pinch_history[-1][1]
+                                y_diff = first_y - last_y  # Positive when moving up
+                                
+                                # Determine if movement is consistent enough to be considered scrolling
+                                movement_consistent = True
+                                for i in range(1, len(pinch_history)):
+                                    # Check if all movements are in the same direction
+                                    curr_diff = pinch_history[i-1][1] - pinch_history[i][1]
+                                    if (curr_diff > 0 and y_diff < 0) or (curr_diff < 0 and y_diff > 0):
+                                        movement_consistent = False
+                                        break
+                                
+                                # Update scroll direction if movement is significant and consistent
+                                if abs(y_diff) > 0.01 and movement_consistent:
+                                    new_direction = "up" if y_diff > 0 else "down"
+                                    
+                                    # Only change direction if it's significant or direction changes
+                                    if scroll_direction != new_direction or abs(y_diff) > 0.03:
+                                        scroll_direction = new_direction
+                                
+                                # Apply volume change if we have a scroll direction
+                                if scroll_direction and can_change_volume:
+                                    # Calculate scroll magnitude (how far we've moved)
+                                    magnitude = abs(y_diff) * scroll_sensitivity
+                                    
+                                    # Apply volume change based on direction
+                                    volume_change = magnitude * 100
+                                    if scroll_direction == "down":
+                                        volume_change = -volume_change
+                                    
+                                    # Calculate new volume
+                                    new_volume = int(current_volume + volume_change)
+                                    new_volume = max(min_volume, min(max_volume, new_volume))
+                                    
+                                    # Apply volume change if significant
+                                    if new_volume != current_volume:
+                                        try:
+                                            current_volume = set_volume(new_volume)
+                                            last_volume_change_time = current_time
+                                            # Reset history to avoid over-scrolling
+                                            pinch_history = pinch_history[-2:]
+                                        except Exception as e:
+                                            print(f"Volume control error: {e}")
+                                    
+                                    # Change pinch visualization color based on scroll direction
+                                    if scroll_direction == "up":
+                                        pinch_display_color = (0, 255, 0)  # Green for volume up
+                                    else:
+                                        pinch_display_color = (0, 0, 255)  # Red for volume down
+                            
+                            # Display scroll status
+                            status_text = f"Scrolling: {scroll_direction.upper() if scroll_direction else 'NONE'}"
+                            cv2.putText(image, status_text, (pinch_pixel[0] - 80, pinch_pixel[1] - 20), 
+                                      cv2.FONT_HERSHEY_SIMPLEX, 0.8, pinch_display_color, 2)
     
-    # Handle volume control
-    if is_pinching:
-        if not was_pinching:
-            # Just started pinching, store current volume
-            pinch_start_volume = current_volume
-            last_positions = [height_percent] * volume_change_smoothing  # Initialize smoothing
-            was_pinching = True
-        
-        if can_change_volume:
-            # Calculate new volume - map height to volume (start from current level)
-            # Scale so small hand movements make reasonable volume changes
-            new_volume = int(height_percent)
-            
-            if new_volume != current_volume:
-                try:
-                    current_volume = set_volume(new_volume)
-                    last_volume_change_time = current_time
-                except Exception as e:
-                    print(f"Volume control error: {e}")
-    elif was_pinching and not is_pinching:
-        # Just stopped pinching
-        last_positions = []
-        was_pinching = False
+    # Reset pinch state if no pinch is currently detected
+    if pinch_active and not is_pinching_now:
+        pinch_active = False
+        pinch_history = []
+        scroll_direction = None
     
     # Draw face detections
     if results_face.detections:
         for detection in results_face.detections:
             mp_drawing.draw_detection(image, detection)
     
-    # Display finger count in top-left corner
+    # Display finger count
     cv2.putText(image, f"Total Fingers: {finger_count}", 
                (10, 50), 
                cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
     
-    # Display volume level and a visual volume bar
+    # Display volume level
     cv2.putText(image, f"Volume: {current_volume}%", 
                (10, 90), 
                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
@@ -351,10 +385,16 @@ while cap.isOpened():
     cv2.rectangle(image, (bar_x, bar_y), (bar_x + bar_width, bar_y + bar_height), (0, 0, 0), 2)
     
     # Display pinch status
-    status_text = "Pinch: Detected" if is_pinching else "Pinch: None"
+    status_text = "Pinch: Detected" if is_pinching_now else "Pinch: None"
     cv2.putText(image, status_text, 
                (10, 160), 
-               cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+               cv2.FONT_HERSHEY_SIMPLEX, 0.8, pinch_display_color if is_pinching_now else (0, 255, 255), 2)
+    
+    # Display scroll instruction when pinching but not scrolling yet
+    if pinch_active and not scroll_direction and current_time - scroll_start_time < scroll_activation_delay:
+        cv2.putText(image, "Hold steady, then move to scroll", 
+                   (10, 200), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 165, 0), 2)
     
     cv2.imshow('MediaPipe Hands and Face Detection', image)
     
